@@ -1,7 +1,6 @@
 ﻿/**
 *
 *  ZipChord
-* 
 *  A customizable hybrid keyboard input method that augments regular
 *  typing with chords and shorthands.
 *  
@@ -336,15 +335,12 @@ Return   ; To prevent execution of any of the following code, except for the alw
 
 Initialize() {
     global keys
-    if (A_IsCompiled)
-        FileInstall, ..\LICENSE, % "LICENSE.txt"
+    FileInstall, ..\LICENSE, % "LICENSE.txt"
     settings.Read()
     if (settings.preferences & PREF_FIRST_RUN) {
         settings.preferences &= ~PREF_FIRST_RUN
-        if (A_IsCompiled) {
-            FileInstall, ..\dictionaries\chords-en-qwerty.txt, % "chords-en-starting.txt"
-            FileInstall, ..\dictionaries\shorthands-english.txt, % "shorthands-english-starting.txt"
-        }
+        FileInstall, ..\dictionaries\chords-en-qwerty.txt, % "chords-en-starting.txt"
+        FileInstall, ..\dictionaries\shorthands-english.txt, % "shorthands-english-starting.txt"
     }
     settings.chord_file := CheckDictionaryFileExists(settings.chord_file, "chord")
     settings.shorthand_file := CheckDictionaryFileExists(settings.shorthand_file, "shorthand")
@@ -441,11 +437,6 @@ KeyDown:
     }
     ; Deal with shorthands and showing hints for defined shortcuts if needed
     if (settings.shorthands_enabled || (settings.hints & HINT_ON) ) {
-        if (last_output & OUT_AUTOMATIC)
-            shorthand_buffer := ""
-        if (last_output & OUT_INTERRUPTED & ~OUT_AUTOMATIC)
-            shorthand_buffer := "<<SHORTHAND_BLOCKED>>"
-        debug.Log("Shorthand buffer: " shorthand_buffer)
         if (key == " " || (! shifted && InStr(keys.remove_space_plain . keys.space_after_plain . keys.capitalizing_plain . keys.other_plain, key)) || (shifted && InStr(keys.remove_space_shift . keys.space_after_shift . keys.capitalizing_shift . keys.other_shift, key)) ) {
             if (shorthand_buffer != "") {
                 ; first, we show a hint for a shortcut, if applicable
@@ -469,7 +460,7 @@ KeyDown:
             }
             shorthand_buffer := ""
         } else {    ; i.e. it was not the end of the word
-            if (last_output & OUT_AUTOMATIC)
+            if (last_output & OUT_INTERRUPTED || last_output & OUT_AUTOMATIC)
                 shorthand_buffer := key
             else
                 shorthand_buffer .= key
@@ -583,6 +574,7 @@ KeyUp:
         }
         chord := Arrange(chord_candidate)
         if ( expanded := chords.LookUp(chord)) {
+            shorthand_buffer := ""
             debug.Log("Chord for:" expanded)
             affixes := ProcessAffixes(expanded)
             ; if we aren't restricted, we print a chord
@@ -781,14 +773,13 @@ ParseKeys(old, ByRef new, ByRef bypassed, ByRef map) {
 Interrupt:
     last_output := OUT_INTERRUPTED
     fixed_output := last_output
+    shorthand_buffer := ""
     debug.Write("Interrupted")
 Return
 
 Enter_key:
-    last_output := OUT_INTERRUPTED | OUT_CAPITALIZE | OUT_AUTOMATIC  ; the automatic flag is there to allow shorthands after Enter 
+    last_output := OUT_INTERRUPTED | OUT_CAPITALIZE
     fixed_output := last_output
-    if (key_monitor.IsOn())
-        key_monitor.NewLine()
 Return
 
 ;;  Adding shortcuts 
@@ -890,7 +881,8 @@ BuildMainDialog() {
     Gui, Add, Text, xs y+m, % "&Output delay (ms)"
     Gui, Add, Edit, vUI_output_delay Right xp+150 w40, % "99"
     Gui, Tab
-    Gui, Add, Button, Default w80 xm+240 gButtonOK, % "OK"
+    Gui, Add, Button, Default w80 xm+240 ym+450 gButtonOK, % "OK"
+    Gui, Add, Button, Default w80 xm+140 ym+450 gButtonApply, % "Apply"
     Gui, Tab, 5
     Gui, Add, Text, Y+20, % "ZipChord"
     Gui, Margin, 15, 5
@@ -968,7 +960,16 @@ UpdateLocaleInMainUI(selected_loc) {
     GuiControl, Choose, UI_locale, % selected_loc
 }
 
-ButtonOK() {
+
+ButtonOK:
+ApplyMainSettings("OK")
+return
+
+ButtonApply:
+ApplyMainSettings("Apply")
+return
+
+ApplyMainSettings(arg) {
     global keys
     global hint_delay
     Gui, Submit, NoHide
@@ -1004,7 +1005,9 @@ ButtonOK() {
     Gui, UI_OSD:Destroy
     hint_delay.Reset()
     BuildOSD() 
-    CloseMainDialog()
+    if (arg != "Apply") {
+        CloseMainDialog()
+    }
 }
 
 UI_main_windowGuiClose() {
